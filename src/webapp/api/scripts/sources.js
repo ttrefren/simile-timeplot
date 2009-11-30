@@ -12,7 +12,123 @@
  * 
  * @constructor
  */
+ 
+Timeplot.JsonEventSource = function(eventIndex) {
+    Timeplot.DefaultEventSource.apply(this, arguments);
+};
+
+Object.extend(Timeplot.JsonEventSource.prototype, Timeplot.DefaultEventSource.prototype);
+
+Timeplot.JsonEventSource.prototype.loadText = function(text, separator, url, filter, format) {
+
+    if (text == null) {
+        return;
+    }
+
+    this._events.maxValues = new Array();
+    var base = this._getBaseURL(url);
+
+    if (!format) format = 'iso8601';
+    var parseDateTimeFunction = this._events.getUnit().getParser(format);
+
+    var data = this._parseText(text, separator);
+
+    var added = false;
+
+    if (filter) {
+        data = filter(data);
+    }
+
+    if (data) {
+        for (var i = 0; i < data.length; i++){
+            var row = data[i];
+            if (row.length > 1) {
+                var dateStr = SimileAjax.jQuery.trim(row[0]);
+                var date = parseDateTimeFunction(dateStr);
+                if (date) {
+                    var evt = new Timeplot.DefaultEventSource.NumericEvent(date,row.slice(1));
+                    this._events.add(evt);
+                    added = true;
+                }
+            }
+        }
+    }
+
+    if (added) {
+        this._fire("onAddMany", []);
+    }
+}
+
+/*
+ * Parse the data file.
+ * 
+ * Adapted from http://www.kawa.net/works/js/jkl/js/jkl-parsexml.js by Yusuke Kawasaki
+ */
+Timeplot.DefaultEventSource.prototype._parseText = function (text, separator) {
+    text = text.replace( /\r\n?/g, "\n" ); // normalize newlines
+    var pos = 0;
+    var len = text.length;
+    var table = [];
+    while (pos < len) {
+        var line = [];
+        if (text.charAt(pos) != '#') { // if it's not a comment, process
+            while (pos < len) {
+                if (text.charAt(pos) == '"') {            // "..." quoted column
+                    var nextquote = text.indexOf('"', pos+1 );
+                    while (nextquote<len && nextquote > -1) {
+                        if (text.charAt(nextquote+1) != '"') {
+                            break;                          // end of column
+                        }
+                        nextquote = text.indexOf('"', nextquote + 2);
+                    }
+                    if ( nextquote < 0 ) {
+                        // unclosed quote
+                    } else if (text.charAt(nextquote + 1) == separator) { // end of column
+                        var quoted = text.substr(pos + 1, nextquote-pos - 1);
+                        quoted = quoted.replace(/""/g,'"');
+                        line[line.length] = quoted;
+                        pos = nextquote + 2;
+                        continue;
+                    } else if (text.charAt(nextquote + 1) == "\n" || // end of line
+                               len == nextquote + 1 ) {              // end of file
+                        var quoted = text.substr(pos + 1, nextquote-pos - 1);
+                        quoted = quoted.replace(/""/g,'"');
+                        line[line.length] = quoted;
+                        pos = nextquote + 2;
+                        break;
+                    } else {
+                        // invalid column
+                    }
+                }
+                var nextseparator = text.indexOf(separator, pos);
+                var nextnline = text.indexOf("\n", pos);
+                if (nextnline < 0) nextnline = len;
+                if (nextseparator > -1 && nextseparator < nextnline) {
+                    line[line.length] = text.substr(pos, nextseparator-pos);
+                    pos = nextseparator + 1;
+                } else {                                    // end of line
+                    line[line.length] = text.substr(pos, nextnline-pos);
+                    pos = nextnline + 1;
+                    break;
+                }
+            }
+        } else { // if it's a comment, ignore
+            var nextnline = text.indexOf("\n", pos);
+            pos = (nextnline > -1) ? nextnline + 1 : cur;
+        }
+        if (line.length > 0) {
+            table[table.length] = line;                 // push line
+        }
+    }
+    if (table.length < 0) return;                     // null data
+    console.log("This is the table - default event source parsetext")
+    console.dir(table);
+    return table;
+}
+
+
 Timeplot.DefaultEventSource = function(eventIndex) {
+    console.log("Creating event source")
     Timeline.DefaultEventSource.apply(this, arguments);
 };
 
@@ -123,6 +239,8 @@ Timeplot.DefaultEventSource.prototype._parseText = function (text, separator) {
         }
     }
     if (table.length < 0) return;                     // null data
+    console.log("This is the table - default event source parsetext")
+    console.dir(table);
     return table;
 }
 
@@ -302,7 +420,7 @@ Object.extend(Timeplot.ColumnSource.prototype,Timeplot.DataSource.prototype);
 Timeplot.ColumnSource.prototype.dispose = function() {
     this.removeListener(this._processingListener);
     this._clear();
-}
+};
 
 Timeplot.ColumnSource.prototype._process = function() {
     var count = this._eventSource.getCount();
@@ -347,7 +465,7 @@ Timeplot.ColumnSource.prototype._process = function() {
 
 Timeplot.ColumnSource.prototype._getValue = function(event) {
     return parseFloat(event.getValues()[this._column]);
-}
+};
 
 // ---------------------------------------------------------------
 
@@ -368,4 +486,19 @@ Timeplot.ColumnDiffSource.prototype._getValue = function(event) {
     var a = parseFloat(event.getValues()[this._column]);
     var b = parseFloat(event.getValues()[this._column2]);
     return a - b;
-}
+};
+
+// -----------------------------------------------------------------------
+
+/**
+ * Implementation of a DataSource that extracts the time series out of a 
+ * single column from the events using a named column instead of a numeric index.
+ * Added by Tim Trefren, tim@mixpanel.com
+ * 
+ * @constructor
+ */
+Timeplot.ColumnNamedSource = function(eventSource, column) {
+    Timeplot.DataSource.apply(this, arguments);
+    this._column = column;
+};
+
